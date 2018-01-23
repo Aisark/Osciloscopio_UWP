@@ -1,0 +1,88 @@
+﻿<Page
+    x:Class="OsciloscopioUWP.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OsciloscopioUWP"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:device="using:OsciloscopioUWP.Modules"
+    mc:Ignorable="d"
+    Loading="Page_Loading">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Name="StatusBorder" 
+                    Height="40" 
+                    Background="Red" 
+                    Grid.Row="0"/>
+            <TextBlock Name="txtStatus"
+                       Margin="10,10,0,0" 
+                       Text="No hay dispositivo conectado"
+                       Foreground="White"
+                       FontSize="15"
+                       FontWeight="Bold"/>
+            <StackPanel Grid.Row="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Margin="10,5,0,10">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Name="ConectedButton"
+                                    Content="Conectar Arduino"
+                                    Margin="0,0,10,0"
+                                    Click="ConectedButton_Click"/>
+                            <Button Name="DisconectButton"
+                                    Content="Desconectar Arduino"
+                                    Click="DisconectButton_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="Selecciona un disposito para conectar"
+                               Margin="0,10,0,10"/>
+                        <StackPanel>
+                            <ListBox Name="DeviceList" Height="80"
+                                     ItemsSource="{x:Bind listOfDevices}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="device:DeviceListEntry">
+                                        <TextBlock Text="{x:Bind InstanceName}"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <RelativePanel Name="OsciloscopioControls" MinWidth="400"
+                                   Grid.Column="1"
+                                   Margin="30,5,10,10"
+                                   Visibility="Collapsed">
+                        <ToggleButton Name="ReadDataButton"
+                                      RelativePanel.AlignLeftWithPanel="True"
+                                      Content="Leer Datos"
+                                      Click="ReadDataButton_Click"/>
+                    </RelativePanel>
+
+                </Grid>
+            </StackPanel>
+            <RelativePanel Grid.Row="2" >
+                <TextBlock Name="ResultReadData"
+                           RelativePanel.AlignHorizontalCenterWithPanel="True"
+                           RelativePanel.AlignVerticalCenterWithPanel="True"
+                           Text="Resultado"
+                           FontSize="30"
+                           TextWrapping="Wrap"/>
+            </RelativePanel>
+
+        </Grid>
+
+
+
+
+    </Grid>
+</Page>
