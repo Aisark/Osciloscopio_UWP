@@ -13,8 +13,10 @@ using Windows.UI.Xaml.Media;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Storage.Streams;
+using LiveCharts;
+using LiveCharts.Uwp;
 using System.Diagnostics;
-
+using System.Runtime.InteropServices;
 
 // La plantilla de elemento Página en blanco está documentada en https://go.microsoft.com/fwlink/?LinkId=402352&clcid=0xc0a
 
@@ -27,6 +29,11 @@ namespace OsciloscopioUWP
     {
         private const String ButtonNameDisconnectFromDevice = "Desconectar Dispositivo";
         private const String ButtonNameDisableReconnectToDevice = "No conectar hasta que este cerrado";
+
+        //Elementos de la grafica
+        private ChartValues<int> ValuesFromRead;
+        public SeriesCollection seriesCollection { get; set; }
+        private Object ValuesObject = new Object();
 
         //Timer
         private DispatcherTimer timer;
@@ -55,15 +62,27 @@ namespace OsciloscopioUWP
 
         public MainPage()
         {
+            this.InitializeComponent();
             Current = this;
             timer = new DispatcherTimer();
-            this.InitializeComponent();
             listOfDevices = new ObservableCollection<DeviceListEntry>();
             mapDeviceWatchersToDeviceSelector = new Dictionary<DeviceWatcher, String>();
-
             watchersStarted = false;
             watchersSuspended = false;
             isAllDevicesEnumerated = false;
+            ValuesFromRead = new ChartValues<int>();
+            seriesCollection = new SeriesCollection
+            {
+                new LineSeries
+                {
+                    Values = ValuesFromRead,
+                    PointGeometry = null,
+                    Fill = new SolidColorBrush(Windows.UI.Colors.Transparent)
+                }
+                
+            };
+            DataContext = this;
+
         }
 
         public static MainPage Current;
@@ -93,7 +112,7 @@ namespace OsciloscopioUWP
                 ResetWriteCancellationTokenSource();
             }
 
-            OsciloscopioControls.Visibility = Visibility.Collapsed;
+            //OsciloscopioControls.Visibility = Visibility.Collapsed;
 
             // Begin watching out for events
             StartHandlingAppEvents();
@@ -101,7 +120,7 @@ namespace OsciloscopioUWP
             // Initialize the desired device watchers so that we can watch for when devices are connected/removed
             InitializeDeviceWatchers();
             StartDeviceWatchers();
-            timer.Interval = TimeSpan.FromMilliseconds(1000);
+            timer.Interval = TimeSpan.FromMilliseconds(100);
             timer.Tick += ReadTimer;
         }
 
@@ -146,6 +165,7 @@ namespace OsciloscopioUWP
                 timer.Stop();
             }
             CancelAllIoTasks();
+            ValuesFromRead.Clear();
             await WriteReadTaskAsync("s");
             Disconect();
         }
@@ -279,6 +299,7 @@ namespace OsciloscopioUWP
                     {
                         CancelWriteTask();
                     }
+
                     var device = await DeviceInformation.CreateFromIdAsync(deviceInformationUpdate.Id);
                     NotifyUser(device.Name + " se ha removido", NotifyType.DeviceRemoved);
 
@@ -604,18 +625,18 @@ namespace OsciloscopioUWP
         private void ReadDataButton_Click(object sender, RoutedEventArgs e)
         {
             //await WriteReadTaskAsync("r");
-            
+
             if ((bool)ReadDataButton.IsChecked)
             {
                 timer.Start();
-                NotifyUser("Graficando ...",NotifyType.StatusMessage);
+                NotifyUser("Graficando ...", NotifyType.StatusMessage);
             }
             else
             {
                 timer.Stop();
                 CancelAllIoTasks();
-                count = 0;
-                NotifyUser("Graficacion Detenida",NotifyType.NoDeviceConected);
+                //count = 0;
+                NotifyUser("Graficacion Detenida", NotifyType.NoDeviceConected);
             }
         }
 
@@ -649,25 +670,28 @@ namespace OsciloscopioUWP
             UInt32 storewrite = await storeAsyncTask;
         }
 
+        //int count = 0;
         private async Task ReadAsync(CancellationToken token)
         {
+            
             Task<UInt32> loadAsyncTask;
-
-            uint ReadBufferLength = 1024;
+            uint ReadBufferLength = 255;
 
             lock (ReadLockObject)
             {
                 token.ThrowIfCancellationRequested();
-                
+                DataReaderObject.InputStreamOptions = InputStreamOptions.ReadAhead;
                 loadAsyncTask = DataReaderObject.LoadAsync(ReadBufferLength).AsTask(token);
             }
 
             UInt32 bytesRead = await loadAsyncTask;
-            
-            if (bytesRead > 0)
+
+            while (DataReaderObject.UnconsumedBufferLength > 0)
             {
                 var read = DataReaderObject.ReadByte();
-                ResultReadData.Text = ((int)read).ToString() +" : "+ count;
+                int readconvert = (read*5) / 255;
+                ValuesFromRead.Add(readconvert);
+                //resultado.Text = ((int)read).ToString() + " : " + count;
             }
         }
 
@@ -706,6 +730,10 @@ namespace OsciloscopioUWP
             try
             {
                 DataReaderObject = new DataReader(EventHandlerForDevice.Current.Device.InputStream);
+                if (DataReaderObject == null)
+                {
+                    NotifyUser("Es null", NotifyType.WaitDevice);
+                }
                 if (Command == "square")
                 {
                     ReadCancellationTokenSource.CancelAfter(3000);
@@ -713,8 +741,8 @@ namespace OsciloscopioUWP
                     char character = await CheckConectConfigurationAsync(ReadCancellationTokenSource.Token);
                     isReadTimeTokenSource = false;
                     ResetReadCancellationTokenSource();
-                    UpdateConnectDisconnectButtonsAndList((character!='a'));
-                    if (character=='a')
+                    UpdateConnectDisconnectButtonsAndList((character!= 'a'));
+                    if (character== 'a')
                     {
                         NotifyUser("Listo para graficar", NotifyType.WaitDevice);
                         OsciloscopioControls.Visibility = Visibility.Visible;
@@ -747,15 +775,27 @@ namespace OsciloscopioUWP
                     NotifyUser("Se ha detenido la lectura", NotifyType.DeviceRemoved);
                 }
             }
-            catch (Exception exep)
+            catch (COMException)
             {
-                ResultReadData.Text = exep.Message;
+                NotifyUser("Error Com before Deatch", NotifyType.ErrorMessage);
             }
-            finally
+            catch (Exception exception)
+            {
+                NotifyUser(exception.Message, NotifyType.ErrorMessage);
+                Debug.WriteLine(exception.Message.ToString());
+            }            finally
             {
                 if (DataReaderObject != null)
                 {
-                    DataReaderObject.DetachStream();
+                    try
+                    {
+                        DataReaderObject.DetachStream();
+                    }
+                    catch(COMException)
+                    {
+                        NotifyUser("Error Com Deatch",NotifyType.ErrorMessage);
+                    }
+                    DataReaderObject.Dispose();
                     DataReaderObject = null;
                 }
             }
@@ -769,13 +809,13 @@ namespace OsciloscopioUWP
         private async Task<char> CheckConectConfigurationAsync(CancellationToken token)
         {
             Task<UInt32> charAsyncTask;
-            char Caracter = 'w';
+            char Caracter = 'b';
             uint ReadBufferLength = 8;
 
             lock (ReadLockObject)
             {
                 token.ThrowIfCancellationRequested();
-
+                DataReaderObject.InputStreamOptions = InputStreamOptions.Partial;
                 charAsyncTask = DataReaderObject.LoadAsync(ReadBufferLength).AsTask(token);
             }
 
@@ -783,9 +823,9 @@ namespace OsciloscopioUWP
 
             if (bytesRead > 0)
             {
-                Byte caracter = DataReaderObject.ReadByte();
+                var caracter = DataReaderObject.ReadByte();
                 Caracter = (char)caracter;
-                ResultReadData.Text = Caracter.ToString();
+                //resultado.Text = Caracter.ToString();
                 return Caracter;
             }
             return Caracter;
@@ -808,19 +848,28 @@ namespace OsciloscopioUWP
             // Hook the cancellation callback (called whenever Task.cancel is called)
             //WriteCancellationTokenSource.Token.Register(() => NotifyWriteCancelingTask());
         }
-
-        private int count = 0;
+        
         private async void ReadTimer(object sender,object e)
         {
-            await WriteReadTaskAsync("r");
-            count++;
+            try
+            {
+                //count++;
+                await WriteReadTaskAsync("r");
+                if (ValuesFromRead.Count > 50)
+                {
+                    ValuesFromRead.RemoveAt(0);
+                }
+            }
+            catch (Exception exep)
+            {
+
+                NotifyUser(exep.Message, NotifyType.DeviceRemoved);
+            }
+            
         }
 
-        private void ReadResultEvent(object sender, int result)
-        {
-            ResultReadData.Text = result.ToString() + " : " + count.ToString();
-        }
-
+        
+        
         private void CancelReadTask()
         {
             lock (ReadLockObject)
@@ -859,6 +908,15 @@ namespace OsciloscopioUWP
             CancelWriteTask();
         }
 
+        private void CartesianChart_Loaded(object sender, RoutedEventArgs e)
+        {
+            ProgressRingChart.Visibility = Visibility.Collapsed;
+        }
+
+        private void voltDiv_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            //TestTextBlocks.Text = voltDiv.Text;
+        }
     }
 
     public enum NotifyType

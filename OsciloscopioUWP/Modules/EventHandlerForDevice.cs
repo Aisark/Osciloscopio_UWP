@@ -351,11 +351,10 @@ namespace OsciloscopioUWP.Modules
                     device.StopBits = SerialStopBitCount.One;
                     device.Handshake = SerialHandshake.None;
                     device.DataBits = 8;
-                    device.ReadTimeout = TimeSpan.FromMilliseconds(95);
+                    device.ReadTimeout = TimeSpan.FromMilliseconds(40);
                     device.WriteTimeout = TimeSpan.FromMilliseconds(100);
                 }
             }
-
         }
 
         /// <summary>
